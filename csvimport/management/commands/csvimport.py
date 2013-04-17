@@ -2,8 +2,6 @@
 # www.heliosfoundation.org
 import os, csv, re
 from datetime import datetime
-import codecs
-import chardet
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import LabelCommand, BaseCommand
@@ -39,7 +37,6 @@ def save_csvimport(props=None, instance=None):
         return csvimp.id
     except:
         # Running as command line
-        print 'Assumed charset = %s\n' % instance.charset
         print '###############################\n' 
         for line in instance.loglist:
             if type(line) != type(''):
@@ -63,8 +60,6 @@ class Command(LabelCommand):
                            help='Please provide the file to import from'),
                make_option('--model', default='iisharing.Item', 
                            help='Please provide the model to import to'),
-               make_option('--charset', default='', 
-                           help='Force the charset conversion used rather than detect it')
                    )
     help = "Imports a CSV file to a model"
 
@@ -84,7 +79,6 @@ class Command(LabelCommand):
         self.nameindexes = False
         self.deduplicate = True
         self.csvfile = []
-        self.charset = ''
 
     def handle_label(self, label, **options):
         """ Handle the circular reference by passing the nested
@@ -93,9 +87,8 @@ class Command(LabelCommand):
         filename = label 
         mappings = options.get('mappings', []) 
         modelname = options.get('model', 'Item')
-        charset = options.get('charset','')
         # show_traceback = options.get('traceback', True)
-        self.setup(mappings, modelname, charset, filename)
+        self.setup(mappings, modelname, filename)
         if not hasattr(self.model, '_meta'):
             msg = 'Sorry your model could not be found please check app_label.modelname'
             try:
@@ -109,13 +102,12 @@ class Command(LabelCommand):
         self.loglist.extend(errors)
         return
 
-    def setup(self, mappings, modelname, charset, csvfile='', defaults='',
+    def setup(self, mappings, modelname, csvfile='', defaults='',
               uploaded=None, nameindexes=False, deduplicate=True):
         """ Setup up the attributes for running the import """
         self.defaults = self.__mappings(defaults)
         if modelname.find('.') > -1:
             app_label, model = modelname.split('.')
-        self.charset = charset
         self.app_label = app_label
         self.model = models.get_model(app_label, model)
         if mappings:
@@ -176,6 +168,7 @@ class Command(LabelCommand):
             loglist.append('Using manually entered mapping list') 
         else:
             for i, heading in enumerate(self.csvfile[0]):
+                heading = heading.replace(' ', '_')
                 for key in ((heading, heading.lower(),) if heading != heading.lower() else (heading,)):
                     if fieldmap.has_key(key):
                         field = fieldmap[key]
@@ -243,6 +236,8 @@ class Command(LabelCommand):
                             loglist.append('Column %s = %s, less than zero so set to 0' \
                                                 % (field, row[column]))
                             row[column] = 0
+                if field_type == 'DateField':
+                    row[column] = datetime.strptime(row[column], '%Y-%m-%d')
                 try:
                     model_instance.__setattr__(field, row[column])
                 except:
@@ -335,34 +330,18 @@ class Command(LabelCommand):
             print "%s: %s" % (types[type][0], message)
     
     def __csvfile(self, datafile):
-        """ Detect file encoding and open appropriately """
-        filehandle = open(datafile)
-        if not self.charset:
-            diagnose = chardet.detect(filehandle.read())
-            self.charset = diagnose['encoding']
         try:
-            csvfile = codecs.open(datafile, 'r', self.charset)
+            csvfile = open(datafile, 'rb')
         except IOError:
             self.error('Could not open specified csv file, %s, or it does not exist' % datafile, 0)
         else:
             # CSV Reader returns an iterable, but as we possibly need to
             # perform list commands and since list is an acceptable iterable, 
             # we'll just transform it.
-            return list(self.charset_csv_reader(csv_data=csvfile, 
-                                                charset=self.charset))
+            dialect = csv.Sniffer().sniff(csvfile.read(1024))
+            csvfile.seek(0)
+            return list(csv.reader(csvfile, dialect))
 
-    def charset_csv_reader(self, csv_data, dialect=csv.excel, 
-                           charset='utf-8', **kwargs):
-        csv_reader = csv.reader(self.charset_encoder(csv_data, charset),
-                                dialect=dialect, **kwargs)
-        for row in csv_reader:
-            # decode charset back to Unicode, cell by cell:
-            yield [unicode(cell, charset) for cell in row]
-
-    def charset_encoder(self, csv_data, charset='utf-8'):
-        for line in csv_data:
-            yield line.encode(charset)
-    
     def __mappings(self, mappings):
         """
         Parse the mappings, and return a list of them.
