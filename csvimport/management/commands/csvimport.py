@@ -124,9 +124,10 @@ class Command(LabelCommand):
         """ Build fkey mapping via introspection of models """
         #TODO fix to find related field name rather than assume second field
         if not key.endswith('_id'):
-            if field.__class__ == models.ForeignKey:
+            if field.__class__ in (models.ForeignKey, models.ManyToManyField):
                 key += '(%s|%s)' % (field.related.parent_model.__name__,
                                     field.related.parent_model._meta.fields[1].name,)
+
         return key
 
     def check_filesystem(self, csvfile):
@@ -159,7 +160,7 @@ class Command(LabelCommand):
             csvimportid = 0
         mapping = []
         fieldmap = {}
-        for field in self.model._meta.fields:
+        for field in self.model._meta.fields + self.model._meta.many_to_many:
             fieldmap[field.name] = field
             if field.__class__ == models.ForeignKey:
                 fieldmap[field.name+"_id"] = field
@@ -190,6 +191,7 @@ class Command(LabelCommand):
             counter += 1
             model_instance = self.model()
             model_instance.csvimport_id = csvimportid
+            m2m_fields = {}
             for (column, field, foreignkey) in self.mappings:
                 field_type = fieldmap.get(field).get_internal_type()
                 if self.nameindexes:
@@ -239,7 +241,10 @@ class Command(LabelCommand):
                 if field_type == 'DateField':
                     row[column] = datetime.strptime(row[column], '%Y-%m-%d')
                 try:
-                    model_instance.__setattr__(field, row[column])
+                    if field_type != 'ManyToManyField':
+                        model_instance.__setattr__(field, row[column])
+                    else:
+                        m2m_fields[field] = row[column]
                 except:
                     try:
                         row[column] = model_instance.getattr(field).to_python(row[column])
@@ -263,8 +268,9 @@ class Command(LabelCommand):
             if self.deduplicate:
                 matchdict = {}
                 for (column, field, foreignkey) in self.mappings:
-                    matchdict[field + '__exact'] = getattr(model_instance, 
-                                                           field, None)
+                    if field not in m2m_fields:
+                        matchdict[field + '__exact'] = getattr(model_instance, 
+                                field, None)
                 try:
                     self.model.objects.get(**matchdict)
                     continue
@@ -272,6 +278,8 @@ class Command(LabelCommand):
                     pass
             try:
                 model_instance.save()
+                for m2m_field in m2m_fields:
+                    getattr(model_instance, m2m_field).add(m2m_fields[m2m_field])
             except Exception, err:
                 loglist.append('Exception found... %s Instance %s not saved.' % (err, counter))
             if CSVIMPORT_LOG == 'logger':
