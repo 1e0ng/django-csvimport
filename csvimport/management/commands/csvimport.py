@@ -169,7 +169,7 @@ class Command(LabelCommand):
             loglist.append('Using manually entered mapping list') 
         else:
             for i, heading in enumerate(self.csvfile[0]):
-                heading = heading.replace(' ', '_')
+                heading = heading.strip().replace(' ', '_')
                 for key in ((heading, heading.lower(),) if heading != heading.lower() else (heading,)):
                     if fieldmap.has_key(key):
                         field = fieldmap[key]
