@@ -241,6 +241,12 @@ class Command(LabelCommand):
                 if field_type == 'DateField':
                     if re.match(r'\d+/\d+/\d+', row[column]):
                         row[column] = datetime.strptime(row[column], '%Y/%m/%d')
+                    else:
+                        row[column] = None
+                if field_type == 'TimeField':
+                    if not re.match(r'\d+:\d+', row[column]):
+                        row[column] = None
+
 
                 try:
                     if field_type != 'ManyToManyField':
