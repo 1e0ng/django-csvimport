@@ -354,11 +354,14 @@ class Command(LabelCommand):
             # CSV Reader returns an iterable, but as we possibly need to
             # perform list commands and since list is an acceptable iterable, 
             # we'll just transform it.
-            try:
-                dialect = csv.Sniffer().sniff(csvfile.read(1024))
-            except:
-                dialect = csv.excel
-            csvfile.seek(0)
+
+            #try:
+            #    dialect = csv.Sniffer().sniff(csvfile.read(1024))
+            #except:
+            #    dialect = csv.excel
+            #csvfile.seek(0)
+
+            dialect = csv.excel
             return list(csv.reader(csvfile, dialect))
 
     def __mappings(self, mappings):
