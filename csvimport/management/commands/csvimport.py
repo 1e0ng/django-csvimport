@@ -239,7 +239,11 @@ class Command(LabelCommand):
                                                 % (field, row[column]))
                             row[column] = 0
                 if field_type == 'DateField':
-                    row[column] = datetime.strptime(row[column], '%Y/%m/%d')
+                    try:
+                        row[column] = datetime.strptime(row[column], '%Y/%m/%d')
+                    except:
+                        pass
+
                 try:
                     if field_type != 'ManyToManyField':
                         model_instance.__setattr__(field, row[column])
